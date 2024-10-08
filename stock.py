@@ -269,12 +269,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
             # logging.warning('loss: {}'.format(loss.item()))
             
             
-            logging.warning("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
-            speed = (time.time() - time_now) / iter_count
-            left_time = speed * ((train_epochs - epoch) * train_steps - i)
-            logging.warning('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
-            iter_count = 0
-            time_now = time.time()
+            
 
             if (i + 1) % 100 == 0:
                 logging.warning("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
@@ -325,7 +320,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
     best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
     
     # model.load_state_dict(torch.load(best_model_path))
-    model = load_best_model(best_model_path, model=model)
+    load_best_model(best_model_path, model=model)
 
     return model, training_loss, validation_loss
 
@@ -462,7 +457,7 @@ def main(args):
         test_dataloader = DataLoader(test_data,batch_size=config.validate_batchsize, shuffle=False) #batch, batchsize, timestamp
         criterion = nn.MSELoss()
         best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
-        model = load_best_model(best_model_path, model=model)
+        load_best_model(best_model_path, model=model)
         # model.load_state_dict(torch.load(best_model_path))
         valid_loss = validate(args, test_dataloader=test_dataloader, 
                               model=model, 
