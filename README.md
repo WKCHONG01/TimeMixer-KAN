@@ -15,6 +15,12 @@ To train the model, use the following command:
 ```bash
 python ./stocks.py --m3 --train --save_path ./timemixer_kan/
 ```
+### Resume Training
+To resume training, 
+```bash
+python ./stocks.py --m3 --train --resume --save_path ./timemixer_kan/
+```
+
 ### Testing
 To test the model, use:
 ```bash
