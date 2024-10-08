@@ -12,7 +12,7 @@ from config import Model2Config
 from model2 import Model # TimeMixer
 from config import Model3Config
 from  model3 import HybridModel
-
+from tqdm import tqdm
 
 from data_provider import Data
 
@@ -240,7 +240,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
         train_loss = []
         rmse_loss = []
         epoch_time = time.time()
-        for i ,data in enumerate(train_dataloader):
+        for i ,(data) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{train_epochs}")):
             iter_count += 1    
             optimizer.zero_grad()
             
@@ -331,7 +331,7 @@ def validate(args, test_dataloader, model, criterion):
     rmse_valid = []
     model.eval()
     with torch.no_grad():
-        for i, data in enumerate(test_dataloader):
+        for i, (data) in enumerate(tqdm(test_dataloader)):
             in_x, ground = torch.FloatTensor(data[0]).cuda(), torch.FloatTensor(data[1]).cuda()
             if args.m3:
 
@@ -362,6 +362,7 @@ def validate(args, test_dataloader, model, criterion):
 
 def main(args):
     global model
+    tqdm.pandas()
     if args.m3:
         
         log_dir = os.path.join(args.save_path, 'model3_embedding3')
