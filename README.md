@@ -21,6 +21,6 @@ To test the model, use:
 python ./stocks.py --m3 --test --save_path ./timemixer_kan/
 ```
 
-### Contributing
+## Contributing
 This is a small experiment project, and any feedback or suggestions are greatly appreciated! Feel free to comment, open issues, or submit pull requests to help improve the model and its capabilities. I am using both the TimeMixer model concept (https://github.com/kwuking/TimeMixer) and KAN (https://github.com/pg2455/KAN-Tutorial)
 
