@@ -7,7 +7,7 @@ TimeMixer-KAN is designed to leverage the strengths of both TimeMixer and Kolmog
 ## Key Features
 Hybrid Architecture: Combines TimeMixer’s sequential modeling capabilities with the Kolmogorov-Arnold Networks for increased flexibility and performance.
 
-Superior Performance: Outperforms the standalone TimeMixer model in short-term forecasting tasks, demonstrating significant improvements in predictive accuracy for stock trading.
+Short-Term Forecasting: Outperforms the standalone TimeMixer model, achieving a validation MSE loss of 0.0012793 on the stock 'AU8U.SI' (not yet fine-tuned).
 
 ## Usage
 ### Training
