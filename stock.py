@@ -24,31 +24,67 @@ import shutil
 import logging 
 
 class EarlyStopping:
-    def __init__(self, patience =7):
+    def __init__(self, args, prev_counter, prev_best_loss, patience =7):
         self.patience = patience
         self.best_loss = None
         self.counter = 0
         self.val_loss_min = 0
         self.early_stop = False
-    def __call__(self, val_loss, model, path):
+        self.best = False
+        if args.resume:
+            self.load_prev(prev_counter=prev_counter, prev_best_loss=prev_best_loss)
+    def __call__(self, epoch, optimizer, scheduler, train_loss,val_loss, model, path):
         score = -val_loss
+        self.best = False
         if self.best_loss is None:
+            self.best = True
             self.val_loss_min = val_loss
             self.best_loss = score
-            self.save_checkpoint(val_loss, model, path)
+            path_best = path + '/' + 'bestmodel_checkpoint.pth'
+            self.save_checkpoint(epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path_best,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
+            path_check = path + '/' + 'checkpoint.pth'
+            self.save_checkpoint(self.best, epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path_check,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
+            
+
         elif score < self.best_loss:
+            
             self.counter +=1
             print(f'Early Stopping counter {self.counter} out of {self.patience} ')
             if self.counter >= self.patience:
                 self.early_stop = True
+            path = path + '/' + 'checkpoint.pth'
+
+            self.save_checkpoint(self.best, epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler,path=path,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
         else:
+            self.best = True
             self.best_loss = score
-            self.save_checkpoint(val_loss, model, path)
+            path = path + '/' + 'bestmodel_checkpoint.pth'
             self.counter = 0
-    def save_checkpoint(self, val_loss, model, path):
+            self.save_checkpoint(self.best, epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
+            
+    '''def save_checkpoint(self, val_loss, model, path):
         print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         self.val_loss_min = val_loss
+    '''
+    def save_checkpoint(self, best,epoch, model, optimizer, scheduler, path, train_loss, val_loss, counter):
+        if best:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'counter' : counter,
+        }, path)
+        self.val_loss_min = val_loss
+    def load_prev(self, prev_counter, prev_best_loss ):
+        self.counter = prev_counter
+        self.best_loss = prev_best_loss
+        self.val_loss_min = prev_best_loss
+
 
 def get_loader(dataset, df):
     transform = Compose([
@@ -133,6 +169,26 @@ def visualize_data(data, x_label, y_label):
     return fig 
 
 
+def load_best_model(path, model):
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+def load_checkpoint(path, model, optimizer, scheduler):
+    
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    start_epoch = checkpoint['epoch'] + 1  # Resume from the next epoch
+    training_loss = checkpoint['train_loss']
+    validation_loss = checkpoint['val_loss']
+    counter = checkpoint['counter']
+    
+    return start_epoch, training_loss, validation_loss, counter
+
+
+
 def adjust_learning_rate(optimizer, scheduler, epoch):
     lr_adjust = {epoch: scheduler.get_last_lr()[0]}
 
@@ -145,23 +201,44 @@ def adjust_learning_rate(optimizer, scheduler, epoch):
     
 
 def train(args, train_dataloader, test_dataloader, model, train_epochs, early_stopping, path, writer):
+    global optimizer, scheduler
     criterion = nn.MSELoss()
-    
     optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
     train_steps = len(train_dataloader)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer=optimizer, 
                                                     max_lr=0.0001, 
                                                     epochs=train_epochs, 
                                                     steps_per_epoch=train_steps)
-    time_now = time.time()
     
+    
+    
+
+
     training_loss = []
     validation_loss = []
-    earlystopping= EarlyStopping(patience=early_stopping)
+    start_epoch = 0
+    
+    
     model.train()
-    for epoch in range(train_epochs):
+    if args.resume:
+        start_epoch, train_loss, valid_loss, counter = load_checkpoint(path= str(path+'/'+'checkpoint.pth'),model=model,optimizer=optimizer ,scheduler=scheduler)
+        print('Previous learning rate: ', optimizer.param_groups[0]['lr'])
+        print('Previous scheduler: ', scheduler)
+        print('Previous epoch:', str(start_epoch+1))
+        print('Previous Training Loss: ', train_loss)
+        print('Previous Validation Loss: ', valid_loss)
+        print('Previous counter: ', counter)
+        earlystopping= EarlyStopping(args=args,prev_counter=counter, prev_best_loss=valid_loss,patience=7)
+        optimizer = adjust_learning_rate(optimizer=optimizer, scheduler= scheduler, epoch = start_epoch)
+        scheduler.step()
+    else:
+        earlystopping = EarlyStopping(args=args, prev_best_loss=None, prev_counter=0, patience=7)
+    time_now = time.time()
+    
+    for epoch in range(start_epoch, train_epochs):
         iter_count = 0 
         train_loss = []
+        rmse_loss = []
         epoch_time = time.time()
         for i ,data in enumerate(train_dataloader):
             iter_count += 1    
@@ -187,9 +264,17 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
             loss = criterion(pred, ground)
             # total_loss = loss + 0.00001*total_entropy
             train_loss.append(loss.item())
+            rmse = torch.sqrt(loss)
+            rmse_loss.append(rmse.item())
             # logging.warning('loss: {}'.format(loss.item()))
             
             
+            logging.warning("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+            speed = (time.time() - time_now) / iter_count
+            left_time = speed * ((train_epochs - epoch) * train_steps - i)
+            logging.warning('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+            iter_count = 0
+            time_now = time.time()
 
             if (i + 1) % 100 == 0:
                 logging.warning("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
@@ -203,29 +288,44 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
             optimizer.step()
             
             
+            
         
         logging.warning("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+        # MSE Loss
         train_loss = np.average(train_loss)
-        writer.add_scalar('Training Loss', train_loss.item(), epoch + 1)
+        writer.add_scalar('MSE Training Loss', train_loss.item(), epoch + 1)
         training_loss.append([train_loss])
-        valid_loss = validate(args, test_dataloader=test_dataloader, model=model, criterion=criterion)
-        writer.add_scalar('Validation Loss', valid_loss.item(), epoch + 1)
+        valid_loss, rmse_valid_loss = validate(args, test_dataloader=test_dataloader, model=model, criterion=criterion)
+        writer.add_scalar('MSE Validation Loss', valid_loss.item(), epoch + 1)
         validation_loss.append([valid_loss])
+
+        #RMSE
+        rmse_loss = np.average(rmse_loss)
+        writer.add_scalar('RMSE Training Loss', rmse_loss.item(), epoch + 1)
+        writer.add_scalar('RMSE Validation Loss', rmse_valid_loss.item(), epoch + 1)
+        
+        current_lr = optimizer.param_groups[0]['lr']
+        writer.add_scalar('Learning Rate', current_lr, epoch + 1)
+
         logging.warning("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(
-                epoch + 1, train_steps, train_loss, valid_loss))
-        earlystopping(val_loss=valid_loss, model=model, path= path)
+                epoch + 1, train_steps, train_loss, valid_loss.item()))
+        earlystopping(epoch = epoch,optimizer=optimizer,train_loss=train_loss.item(), scheduler = scheduler,val_loss=valid_loss.item(), model=model, path= path)
         if earlystopping.early_stop:
             logging.warning("Early Stopping")
             break
-        optimzer = adjust_learning_rate(optimizer=optimizer, scheduler= scheduler, epoch = epoch+1 )
+        optimizer = adjust_learning_rate(optimizer=optimizer, scheduler= scheduler, epoch = epoch+1 )
         scheduler.step()
+        
+        
             
 
         
         
 
-    best_model_path = path + '/' + 'checkpoint.pth'
-    model.load_state_dict(torch.load(best_model_path))
+    best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
+    
+    # model.load_state_dict(torch.load(best_model_path))
+    model = load_best_model(best_model_path, model=model)
 
     return model, training_loss, validation_loss
 
@@ -233,6 +333,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
 
 def validate(args, test_dataloader, model, criterion):
     valid_loss = []
+    rmse_valid = []
     model.eval()
     with torch.no_grad():
         for i, data in enumerate(test_dataloader):
@@ -245,24 +346,30 @@ def validate(args, test_dataloader, model, criterion):
                 for a in range(in_x.shape[0]):
                     pred.append(model(in_x[a].unsqueeze(0)))
                 pred = torch.cat(pred, dim=0)
+                
             else:
                 pred = model(in_x)
             pred = pred.detach().cpu()
             ground = ground.detach().cpu()
             loss = criterion(pred,ground)
+            
             valid_loss.append(loss.item())
-
+            rmse = torch.sqrt(loss)
+            rmse_valid.append(rmse.item())
+            
 
     valid_loss = np.average(valid_loss)
+    rmse_loss = np.average(rmse_valid)
     model.train()
-    return valid_loss
+    return valid_loss, rmse_loss
 
 
 
 def main(args):
+    global model
     if args.m3:
         
-        log_dir = os.path.join(args.save_path, 'model3_embedding2')
+        log_dir = os.path.join(args.save_path, 'model3_embedding3')
         # log_dir = 'D:/ntu/stocks/model3_embedding2'
     elif args.timemixer:
         log_dir = os.path.join(args.save_path, 'model2')
@@ -302,7 +409,7 @@ def main(args):
         # path = "D:/ntu/stocks/model2_checkpoint"
 
     elif args.m3:
-        path = os.path.join(args.save_path, 'model3_embedding2_checkpoint')
+        path = os.path.join(args.save_path, 'model3_embedding3_checkpoint')
         # path = "D:/ntu/stocks/model3_embedding2_checkpoint"
         
     if not os.path.exists(path):
@@ -348,14 +455,15 @@ def main(args):
         
         writer.close()
 
-        
+    
     elif args.test:
         _, _, ctest_x, ctest_y  = train_target_split(c,days=config.seq_len, ratio=config.ratio, pred_len=config.pred_len) 
         test_data = TensorDataset(ctest_x,ctest_y)
         test_dataloader = DataLoader(test_data,batch_size=config.validate_batchsize, shuffle=False) #batch, batchsize, timestamp
         criterion = nn.MSELoss()
-        best_model_path = path + '/' + 'checkpoint.pth'
-        model.load_state_dict(torch.load(best_model_path))
+        best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
+        model = load_best_model(best_model_path, model=model)
+        # model.load_state_dict(torch.load(best_model_path))
         valid_loss = validate(args, test_dataloader=test_dataloader, 
                               model=model, 
                               criterion=criterion
@@ -383,6 +491,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="description")
     parser.add_argument('--train', action='store_true')
     parser.set_defaults(train=False)
+    parser.add_argument('--resume', action='store_true')
+    parser.set_defaults(resume=False)
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(test=False)
     parser.add_argument('--visualize', action='store_true')
