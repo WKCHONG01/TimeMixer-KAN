@@ -6,8 +6,6 @@
 TimeMixer-KAN is designed to leverage the strengths of both TimeMixer and Kolmogorov-Arnold Networks to process sequential data. By integrating these models, TimeMixer-KAN can effectively handle complex patterns in time series data, making it particularly useful for forecasting tasks in financial markets.
 
 ## Key Features
-#Hybrid Architecture: 
-Combines TimeMixer’s sequential modeling capabilities with the Kolmogorov-Arnold Networks for increased flexibility and performance.
+Hybrid Architecture: Combines TimeMixer’s sequential modeling capabilities with the Kolmogorov-Arnold Networks for increased flexibility and performance.
 
-## Superior Performance: 
-Outperforms the standalone TimeMixer model in short-term forecasting tasks, demonstrating significant improvements in predictive accuracy for stock trading.
+Superior Performance: Outperforms the standalone TimeMixer model in short-term forecasting tasks, demonstrating significant improvements in predictive accuracy for stock trading.
