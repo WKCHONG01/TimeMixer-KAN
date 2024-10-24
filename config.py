@@ -3,11 +3,11 @@ class Model2Config:
         self,
         d_model = 512,
         layers = 12,
-        num_channels = 1,
+        num_channels = 4,
         moving_avg = 3,
         e_layers = 2,
         d_layers = 2,
-        enc_in = 1,
+        enc_in = 4,
         seq_len = 12,
         pred_len = 3,
         ratio = 0.7, 
@@ -16,13 +16,20 @@ class Model2Config:
         down_sampling_window = 2,
         down_sampling_layers = 2,
         down_sampling_method = "conv",
-        top_k = 5,
-        channel_independence = 1,
+        channel_independence = 0,
         factor = 1,
         dropout = 0.1,
-        c_out = 1,
+        c_out = 4,
         training = True,
         d_ff = 1024,
+        training_batchsize = 2,
+        validate_batchsize = 2,
+        train_epoch = 20,
+        early_stopping = 3,
+        lr = 1e-5,
+        max_lr = 1e-4,
+        step = 10,
+        weight_decay = 1e-7,
         **kwargs
 
     ):
@@ -42,13 +49,21 @@ class Model2Config:
         self.down_sampling_method = down_sampling_method
         self.decomp_method = decomp_method
         self.use_norm = use_norm
-        self.top_k = top_k
         self.channel_independence = channel_independence
         self.factor = factor
         self.dropout = dropout
         self.training = training
         self.c_out = c_out
         self.d_ff = d_ff
+        self.training_batchsize = training_batchsize
+        self.validate_batchsize = validate_batchsize
+        self.train_epoch = train_epoch
+        self.early_stopping = early_stopping
+        self.lr = lr
+        self.step = step
+        self.weight_decay = weight_decay
+        self.max_lr = max_lr
+
 
 # TimeMixer Kan
 class Model3Config: 
@@ -69,7 +84,6 @@ class Model3Config:
         down_sampling_window = 2,
         down_sampling_layers = 2,
         down_sampling_method = "conv", #
-        top_k = 5,
         channel_independence = False,
         factor = 1, #
         dropout = 0.1, #
@@ -79,6 +93,13 @@ class Model3Config:
         training_batchsize = 2,
         validate_batchsize = 2,
         expert_type = 'mlp', # mlp or kan
+        control_points = 10, 
+        train_epoch = 20,
+        early_stopping = 3,
+        lr = 1e-5,
+        max_lr = 1e-4,
+        step = 10,
+        weight_decay = 1e-7,
         **kwargs
 
     ):
@@ -97,7 +118,6 @@ class Model3Config:
         self.down_sampling_method = down_sampling_method
         self.decomp_method = decomp_method
         self.use_norm = use_norm
-        self.top_k = top_k
         self.channel_independence = channel_independence
         self.factor = factor
         self.dropout = dropout
@@ -108,6 +128,13 @@ class Model3Config:
         self.training_batchsize = training_batchsize
         self.validate_batchsize = validate_batchsize
         self.expert_type = expert_type
+        self.control_points = control_points
+        self.train_epoch = train_epoch
+        self.early_stopping = early_stopping
+        self.lr = lr
+        self.step = step
+        self.weight_decay = weight_decay
+        self.max_lr = max_lr
 
 
         
