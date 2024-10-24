@@ -7,8 +7,6 @@ from StandardNorm import Normalize
 from config import Model2Config
 
 
-
-
 class DFT_series_decomp(nn.Module):
     """
     Series decomposition block
