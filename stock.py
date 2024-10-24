@@ -22,6 +22,9 @@ import numpy as np
 
 import shutil
 import logging 
+import pickle
+import random
+
 
 class EarlyStopping:
     def __init__(self, args, prev_counter, prev_best_loss, patience =7):
@@ -41,7 +44,7 @@ class EarlyStopping:
             self.val_loss_min = val_loss
             self.best_loss = score
             path_best = path + '/' + 'bestmodel_checkpoint.pth'
-            self.save_checkpoint(epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path_best,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
+            self.save_checkpoint(best= self.best, epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path_best,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
             path_check = path + '/' + 'checkpoint.pth'
             self.save_checkpoint(self.best, epoch=epoch, model = model, optimizer=optimizer, scheduler=scheduler, path=path_check,train_loss=train_loss, val_loss=val_loss, counter=self.counter)
             
@@ -143,19 +146,6 @@ def train_target_split(x, days, ratio, pred_len):
         
         return None, None, xtest_arr.reshape(-1,days,embed_dim), ytest_arr.reshape(-1,pred_len,embed_dim)
     
-
-
-class LSTM(nn.Module):
-    def __init__(self):
-        super(LSTM,self).__init__()
-        self.lstm1 = nn.LSTM(input_size = 1, hidden_size= 2, num_layers= 1, bias = False, batch_first=True)
-        self.l1 = nn.Linear(50, 1)
-    def forward(self, x):
-        h0 = torch.zeros(1,x.size(0),2)
-        c0 = torch.zeros(1,x.size(0),2)
-        x = self.lstm1(x,(h0,c0))
-        return x
-
         
 def visualize_data(data, x_label, y_label):
     fig = plt.figure(figsize=(5,5))
@@ -200,13 +190,20 @@ def adjust_learning_rate(optimizer, scheduler, epoch):
     return optimizer
     
 
-def train(args, train_dataloader, test_dataloader, model, train_epochs, early_stopping, path, writer):
+def train(args, train_dataloader, test_dataloader, model, train_epochs, early_stopping, path, writer, lr, max_lr, weight_decay):
     global optimizer, scheduler
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
     train_steps = len(train_dataloader)
+    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer=optimizer, 
+    #                                                 max_lr=0.0001, 
+    #                                                 epochs=train_epochs, 
+    #                                                 steps_per_epoch=train_steps)
+    
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer=optimizer, 
-                                                    max_lr=0.0001, 
+                                                    max_lr=max_lr, 
                                                     epochs=train_epochs, 
                                                     steps_per_epoch=train_steps)
     
@@ -245,7 +242,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
             optimizer.zero_grad()
             
             in_x, ground = torch.FloatTensor(data[0]).cuda(), torch.FloatTensor(data[1]).cuda()
-            if args.m3:
+            if args.tmkan:
                 pred = []
                 # pred, total_entropy = model(in_x)
                 
@@ -263,6 +260,7 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
             # logging.warning('ground truth: {}'.format(ground))
             loss = criterion(pred, ground)
             # total_loss = loss + 0.00001*total_entropy
+            print(loss.item())
             train_loss.append(loss.item())
             rmse = torch.sqrt(loss)
             rmse_loss.append(rmse.item())
@@ -329,11 +327,13 @@ def train(args, train_dataloader, test_dataloader, model, train_epochs, early_st
 def validate(args, test_dataloader, model, criterion):
     valid_loss = []
     rmse_valid = []
+    if args.save_result:
+        pred_list = []
     model.eval()
     with torch.no_grad():
         for i, (data) in enumerate(tqdm(test_dataloader)):
             in_x, ground = torch.FloatTensor(data[0]).cuda(), torch.FloatTensor(data[1]).cuda()
-            if args.m3:
+            if args.tmkan:
 
                 pred = []
                 # pred, total_entropy = model(in_x)
@@ -345,6 +345,8 @@ def validate(args, test_dataloader, model, criterion):
             else:
                 pred = model(in_x)
             pred = pred.detach().cpu()
+            if args.save_result:
+                pred_list.append(pred)
             ground = ground.detach().cpu()
             loss = criterion(pred,ground)
             
@@ -356,95 +358,82 @@ def validate(args, test_dataloader, model, criterion):
     valid_loss = np.average(valid_loss)
     rmse_loss = np.average(rmse_valid)
     model.train()
+    if args.save_result:
+        return valid_loss, rmse_loss, pred_list
     return valid_loss, rmse_loss
 
-
-
-def main(args):
-    global model
-    tqdm.pandas()
-    if args.m3:
-        
-        log_dir = os.path.join(args.save_path, 'model3_embedding3')
-        # log_dir = 'D:/ntu/stocks/model3_embedding2'
-    elif args.timemixer:
-        log_dir = os.path.join(args.save_path, 'model2')
-        # log_dir = 'D:/ntu/stocks/model2'
-        
-
-    
-
-    # data = yf.Ticker("AU8U.SI")
-    
-    data = Data("AU8U.SI")
-    # Get historical closing prices
-    Close = data.extract_data(['Close','Open','High','Low'])
-    
-    
-
-    '''
-    Date = hist.index.date.reshape(-1,1)
-    # Date = [[i[0].year,i[0].day,i[0].month] for i in Date]
-    Open = hist[['Open']]
-    High = hist[['High']]
-    Low = hist[['Low']]
-    Close = hist[['Close']]
-    Volume = hist[['Volume']]
-    '''
-
-
-    c = Close.to_numpy() # timestamp, 1
-    c = get_loader(c, Close).squeeze(0) # timestamp, 1 after squeezed before is 1, timestamp, 1
-    
-    
-    model1 = LSTM()
-
-    early_stopping=7
+def setup(args):
     if args.timemixer:
         path = os.path.join(args.save_path, 'model2_checkpoint')
         # path = "D:/ntu/stocks/model2_checkpoint"
-
-    elif args.m3:
-        path = os.path.join(args.save_path, 'model3_embedding3_checkpoint')
-        # path = "D:/ntu/stocks/model3_embedding2_checkpoint"
-        
-    if not os.path.exists(path):
-        os.makedirs(path)
-    
-    if args.timemixer:
         config = Model2Config()
         model = Model(configs=config).cuda()
-    # print("Time Mixer")
-    # print(model2)
-    elif args.m3:
+        log_dir = os.path.join(args.save_path, 'model2')
+        modelname = 'TimeMixer'        
+    
+    elif args.tmkan:
+        path = os.path.join(args.save_path, 'model3_embedding3_checkpoint')
+        # path = "D:/ntu/stocks/model3_embedding2_checkpoint"
         config = Model3Config()
         model = HybridModel(configs=config).cuda()
+        log_dir = os.path.join(args.save_path, 'model3_embedding3')
+        modelname = 'TimeMixer-Kan'
+        
         # model.apply(init_weights)
-    # print("Model 3")
-    # print(model3)
-    # exit()
-      
+
+    if not os.path.exists(args.save_path):
+        os.makedirs(args.save_path)    
+    if not os.path.exists(path):
+        os.makedirs(path)
+    print('model name: ', modelname)
+    print('parameters count =',sum(p.numel() for p in model.parameters() if p.requires_grad))  
+    
+    return path, config, model, log_dir
+
+def select_data(dataset, config):
+    dataset = dataset[-(config.seq_len + config.pred_len + config.step):]
+    return dataset
+
+def PrepareData(args, dataset, config):
+    if args.demo:
+        dataset = select_data(dataset)
+    #timestamp, features
+    c = dataset.to_numpy()
+    c = get_loader(c, dataset).squeeze(0)
+    ctrain_x, ctrain_y, ctest_x, ctest_y  = train_target_split(c,days=config.seq_len, ratio=config.ratio, pred_len=config.pred_len) 
+    train_data = TensorDataset(ctrain_x, ctrain_y) 
+    test_data = TensorDataset(ctest_x,ctest_y)
+    train_dataloader = DataLoader(train_data,batch_size=config.training_batchsize, shuffle=False) #batch, batchsize, timestamp
+    test_dataloader = DataLoader(test_data,batch_size=config.validate_batchsize, shuffle=False) #batch, batchsize, timestamp
+    return train_dataloader, test_dataloader    
+
+def main(args):
+    global model
+    tqdm.pandas() 
+    data = Data("AU8U.SI")
+    dataset = data.extract_data(['Close','Open','High','Low'], tech_indicator=False)
+    path, config, model, log_dir = setup(args)    
     torch.cuda.empty_cache()
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    
     if args.train:
         if os.path.exists(log_dir):
             shutil.rmtree(log_dir)
         os.makedirs(log_dir)
         writer = SummaryWriter(log_dir)
-
-        train_epochs = 30
-        ctrain_x, ctrain_y, ctest_x, ctest_y  = train_target_split(c,days=config.seq_len, ratio=config.ratio, pred_len=config.pred_len) 
-        train_data = TensorDataset(ctrain_x, ctrain_y) 
-        test_data = TensorDataset(ctest_x,ctest_y)
-        train_dataloader = DataLoader(train_data,batch_size=config.training_batchsize, shuffle=False) #batch, batchsize, timestamp
-        test_dataloader = DataLoader(test_data,batch_size=config.validate_batchsize, shuffle=False) #batch, batchsize, timestamp
-        
+        train_dataloader, test_dataloader = PrepareData(args, dataset, config)
         model, training_loss, validation_loss = train(args,train_dataloader=train_dataloader,
                                             test_dataloader=test_dataloader, 
                                             model=model, 
-                                            train_epochs=train_epochs,
-                                            early_stopping=early_stopping,
+                                            train_epochs=config.train_epoch,
+                                            early_stopping=config.early_stopping,
                                             path=path,
                                             writer= writer,
+                                            lr=config.lr,
+                                            max_lr=config.max_lr,
+                                            weight_decay = config.weight_decay
                                             )
         # writer.add_figure("Training Loss", visualize_data(np.asarray(training_loss), "Epochs", "Training Loss"))
         # writer.add_figure("Validation Loss", visualize_data(np.asarray(validation_loss), "Epochs", "Validation Loss"))
@@ -453,19 +442,41 @@ def main(args):
 
     
     elif args.test:
-        _, _, ctest_x, ctest_y  = train_target_split(c,days=config.seq_len, ratio=config.ratio, pred_len=config.pred_len) 
-        test_data = TensorDataset(ctest_x,ctest_y)
-        test_dataloader = DataLoader(test_data,batch_size=config.validate_batchsize, shuffle=False) #batch, batchsize, timestamp
+        _, test_dataloader = PrepareData(args, dataset, config)
         criterion = nn.MSELoss()
         best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
         load_best_model(best_model_path, model=model)
         # model.load_state_dict(torch.load(best_model_path))
-        valid_loss = validate(args, test_dataloader=test_dataloader, 
+        valid_loss, rmse_loss = validate(args, test_dataloader=test_dataloader, 
                               model=model, 
                               criterion=criterion
                               )
         logging.warning("Validation Loss: {0:.7f}".format(
                 valid_loss))
+        
+    elif args.save_result:
+        print('saving result')
+        config.ratio = 1
+        _, test_dataloader = PrepareData(args, dataset, config)
+        criterion = nn.MSELoss()
+        best_model_path = path + '/' + 'bestmodel_checkpoint.pth'
+        load_best_model(best_model_path, model=model)
+        # model.load_state_dict(torch.load(best_model_path))
+        print('Running validation')
+        valid_loss, rmse_loss, pred_list = validate(args, test_dataloader=test_dataloader, 
+                              model=model, 
+                              criterion=criterion
+                              )
+        logging.warning("Validation Loss: {0:.7f}".format(
+                valid_loss))
+        print('Saving predictions')
+
+        with open(args.save_path + 'prediction.pkl', 'wb') as f:
+            pickle.dump(pred_list, f)
+        
+        
+        
+        
 '''    
     elif args.visualize:
         writer.add_figure("Original Data",visualize_data(c.numpy(), "Timestamp", "Close Price"))
@@ -493,12 +504,16 @@ if __name__ == "__main__":
     parser.set_defaults(test=False)
     parser.add_argument('--visualize', action='store_true')
     parser.set_defaults(visualize=False)
-    parser.add_argument('--m3', action='store_true')
-    parser.set_defaults(m3 = False)
+    parser.add_argument('--tmkan', action='store_true')
+    parser.set_defaults(tmkan = False)
     parser.add_argument('--timemixer', action='store_true')
     parser.set_defaults(timemixer=False)
+    parser.add_argument('--save_result', action='store_true')
+    parser.set_defaults(save_result=False)
+    parser.add_argument('--demo', action= 'store_true')
+    parser.set_defaults(demo = False)
     parser.add_argument('--save_path', type=str, default='./', help='Directory to save checkpoint files')
-
+    
     
     args = parser.parse_args()
     print(args)

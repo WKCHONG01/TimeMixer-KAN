@@ -43,57 +43,58 @@ def B_batch(x, grid, k=0, extend=True, device='cpu'):
     '''
 
     # x shape: (size, x); grid shape: (size, grid)
-    def extend_grid(grid, k_extend=0):
-        # pad k to left and right
-        # grid shape: (batch, grid)
-        h = (grid[:,  [-1]] - grid[:,  [0]]) / (grid.shape[1] - 1)
-
-        for i in range(k_extend):
-            grid = torch.cat([grid[:,  [0]] - h, grid], dim=1)
-            grid = torch.cat([grid, grid[:,  [-1]] + h], dim=1)
-        grid = grid.to(device)
-        return grid
-
-    if extend == True:
-        grid = extend_grid(grid, k_extend=k)
-
-    grid = grid.unsqueeze(dim=2).to(device)
-    x = x.unsqueeze(dim=1).to(device)
-    if k == 0:
-        value = (x >= grid[:,  :-1]) * (x < grid[:,  1:])
-    else:
-        B_km1 = B_batch(x[:,  0], grid=grid[:, :,  0], k=k - 1, extend=False, device=device)
-        
-        value = (x - grid[:,  :-(k + 1)]) / (grid[:,  k:-1] - grid[:,  :-(k + 1)]) * B_km1[:,  :-1] + (
-                grid[:,  k + 1:] - x) / (grid[:,  k + 1:] - grid[:,  1:(-k)]) * B_km1[:,  1:]
-    
-
-    
     # def extend_grid(grid, k_extend=0):
     #     # pad k to left and right
     #     # grid shape: (batch, grid)
-    #     h = (grid[:, :, [-1]] - grid[:, :, [0]]) / (grid.shape[2] - 1)
+    #     h = (grid[:,  [-1]] - grid[:,  [0]]) / (grid.shape[1] - 1)
 
     #     for i in range(k_extend):
-    #         grid = torch.cat([grid[:, :, [0]] - h, grid], dim=2)
-    #         grid = torch.cat([grid, grid[:, :, [-1]] + h], dim=2)
+    #         grid = torch.cat([grid[:,  [0]] - h, grid], dim=1)
+    #         grid = torch.cat([grid, grid[:,  [-1]] + h], dim=1)
+            
     #     grid = grid.to(device)
     #     return grid
 
     # if extend == True:
     #     grid = extend_grid(grid, k_extend=k)
 
-    # grid = grid.unsqueeze(dim=3).to(device)
-    # x = x.unsqueeze(dim=2).to(device)
-    
+    # grid = grid.unsqueeze(dim=2).to(device)
+    # x = x.unsqueeze(dim=1).to(device)
     # if k == 0:
-    #     value = (x >= grid[:, :, :-1]) * (x < grid[:, :, 1:])
+    #     value = (x >= grid[:,  :-1]) * (x < grid[:,  1:])
     # else:
-
-    #     B_km1 = B_batch(x[:, :, 0], grid=grid[:, :, :, 0], k=k - 1, extend=False, device=device)
+    #     B_km1 = B_batch(x[:,  0], grid=grid[:, :,  0], k=k - 1, extend=False, device=device)
         
-    #     value = (x - grid[:, :, :-(k + 1)]) / (grid[:, :, k:-1] - grid[:, :, :-(k + 1)]) * B_km1[:, :, :-1] + (
-    #             grid[:, :, k + 1:] - x) / (grid[:, :, k + 1:] - grid[:, :, 1:(-k)]) * B_km1[:, :, 1:]
+    #     value = (x - grid[:,  :-(k + 1)]) / (grid[:,  k:-1] - grid[:,  :-(k + 1)]) * B_km1[:,  :-1] + (
+    #             grid[:,  k + 1:] - x) / (grid[:,  k + 1:] - grid[:,  1:(-k)]) * B_km1[:,  1:]
+    
+
+    
+    def extend_grid(grid, k_extend=0):
+        # pad k to left and right
+        # grid shape: (batch, grid)
+        h = (grid[:, :, [-1]] - grid[:, :, [0]]) / (grid.shape[2] - 1)
+
+        for i in range(k_extend):
+            grid = torch.cat([grid[:, :, [0]] - h, grid], dim=2)
+            grid = torch.cat([grid, grid[:, :, [-1]] + h], dim=2)
+        grid = grid.to(device)
+        return grid
+
+    if extend == True:
+        grid = extend_grid(grid, k_extend=k)
+
+    grid = grid.unsqueeze(dim=3).to(device)
+    x = x.unsqueeze(dim=2).to(device)
+    
+    if k == 0:
+        value = (x >= grid[:, :, :-1]) * (x < grid[:, :, 1:])
+    else:
+
+        B_km1 = B_batch(x[:, :, 0], grid=grid[:, :, :, 0], k=k - 1, extend=False, device=device)
+        
+        value = (x - grid[:, :, :-(k + 1)]) / (grid[:, :, k:-1] - grid[:, :, :-(k + 1)]) * B_km1[:, :, :-1] + (
+                grid[:, :, k + 1:] - x) / (grid[:, :, k + 1:] - grid[:, :, 1:(-k)]) * B_km1[:, :, 1:]
      
     return value
 
@@ -136,10 +137,9 @@ def coef2curve(x_eval, grid, coef, k, device="cpu"):
     
     if coef.dtype != x_eval.dtype:
         coef = coef.to(x_eval.dtype)
-    y_eval = torch.einsum('ij,ijk->ik', coef, B_batch(x_eval, grid, k, device=device))
+    # y_eval = torch.einsum('ij,ijk->ik', coef, B_batch(x_eval, grid, k, device=device))
     
-    # y_eval = torch.einsum('ijn,ijmk->inmk', coef, B_batch(x_eval, grid, k, device=device))
-    # y_eval = y_eval.reshape(y_eval.shape[0], -1, y_eval.shape[-1])
+    y_eval = torch.einsum('ijm,ijmk->ijk', coef, B_batch(x_eval, grid, k, device=device))
     return y_eval
 
 
@@ -174,21 +174,21 @@ def curve2coef(x_eval, y_eval, grid, k, device="cpu"):
     '''
     # x_eval: (size, batch); y_eval: (size, batch); grid: (size, grid); k: scalar
 
-    mat = B_batch(x_eval, grid, k, device=device).permute(0,2,1)
+    # mat = B_batch(x_eval, grid, k, device=device).permute(0,2,1)
     
     # # dimension,  number of splines, grid points // dimension, splines, grid points 
-    # mat = B_batch(x_eval, grid, k, device=device).permute(0,1,3,2)
+    mat = B_batch(x_eval, grid, k, device=device).permute(0,1,3,2)
     
-    if(len(y_eval.shape) != 3):
-        y_eval = y_eval.unsqueeze(dim=2)
-    coef = torch.linalg.lstsq(mat.to(device), y_eval.to(device),
-                              driver='gelsy' if device == 'cpu' else 'gels').solution[:,:,0]
-    
-    # # coef = torch.linalg.lstsq(mat, y_eval.unsqueeze(dim=2)).solution[:, :, 0]
-    # if(len(y_eval.shape) != 4):
-    #     y_eval = y_eval.unsqueeze(dim=3)
+    # if(len(y_eval.shape) != 3):
+    #     y_eval = y_eval.unsqueeze(dim=2)
     # coef = torch.linalg.lstsq(mat.to(device), y_eval.to(device),
     #                           driver='gelsy' if device == 'cpu' else 'gels').solution[:,:,0]
+    
+    # coef = torch.linalg.lstsq(mat, y_eval.unsqueeze(dim=2)).solution[:, :, 0]
+    if(len(y_eval.shape) != 4):
+        y_eval = y_eval.unsqueeze(dim=3)
+    coef = torch.linalg.lstsq(mat.to(device), y_eval.to(device),
+                              driver='gelsy' if device == 'cpu' else 'gels').solution[:,:,:,0]
     return coef.to(device)
 
 # KAN Layer
@@ -318,8 +318,10 @@ class KANLayer(nn.Module):
         
         # shape: (size, coef)
         
-        self.coef = torch.nn.Parameter(torch.cat([curve2coef(self.grid[i], noises[i], self.grid[i], k, device).unsqueeze(0) for i in range(d_model)], dim = 0))
+        # self.coef = torch.nn.Parameter(torch.cat([curve2coef(self.grid[i], noises[i], self.grid[i], k, device).unsqueeze(0) for i in range(d_model)], dim = 0))
+        self.coef = torch.nn.Parameter(curve2coef(self.grid, noises, self.grid, k, device))
         
+
         if isinstance(scale_base, float):
             # self.scale_base = torch.nn.Parameter(torch.ones(size, device=device) * scale_base).requires_grad_(
             #     sb_trainable)  # make scale trainable
@@ -389,9 +391,9 @@ class KANLayer(nn.Module):
         
         preacts = x.permute(0 ,2, 1).clone().reshape(dimension, batch, self.out_dim, self.in_dim)
         base = self.base_fun(x).permute(0, 2, 1)  # shape (batch, size)
-        y = torch.cat([coef2curve(x_eval=x[i], grid = self.grid[i,self.weight_sharing,:], coef = self.coef[i,self.weight_sharing,:], k = self.k, device=self.device).unsqueeze(0) for i in range(dimension)],dim=0)
-        # y = coef2curve(x_eval=x, grid=self.grid[:,self.weight_sharing,:], coef=self.coef[:,self.weight_sharing,:], k=self.k,
-        #                device=self.device)  # shape (size, batch)
+        # y = torch.cat([coef2curve(x_eval=x[i], grid = self.grid[i,self.weight_sharing,:], coef = self.coef[i,self.weight_sharing,:], k = self.k, device=self.device).unsqueeze(0) for i in range(dimension)],dim=0)
+        y = coef2curve(x_eval=x, grid=self.grid[:,self.weight_sharing,:], coef=self.coef[:,self.weight_sharing,:], k=self.k,
+                       device=self.device)  # shape (size, batch)
         
         y = y.permute(0,2,1)  # shape (batch, size)
         postspline = y.clone().reshape(dimension, batch, self.out_dim, self.in_dim)
@@ -444,8 +446,10 @@ class KANLayer(nn.Module):
         x_pos = torch.sort(x, dim=1)[0]
         
         # x_pos = torch.sort(x, dim=0)[0]
-        y_eval = torch.cat([coef2curve(x_pos[i].unsqueeze(1), self.grid[i], self.coef[i], self.k, device=self.device).unsqueeze(0) for i in range(batch)],dim=0)
+        # y_eval = torch.cat([coef2curve(x_pos[i].unsqueeze(1), self.grid[i], self.coef[i], self.k, device=self.device).unsqueeze(0) for i in range(batch)],dim=0)
+        y_eval = coef2curve(x_pos.unsqueeze(2), self.grid, self.coef, self.k, device=self.device)
         
+
         num_interval = self.grid.shape[2] - 1
         ids = [int(self.size / num_interval * i) for i in range(num_interval)] + [-1]
         
@@ -474,9 +478,8 @@ class KANLayer(nn.Module):
         grid_uniform = torch.cat(grid_uniform, dim = 0)
         
         self.grid.data = self.grid_eps * grid_uniform + (1 - self.grid_eps) * grid_adaptive
-        
-        # self.coef.data = curve2coef(x_pos, y_eval, self.grid, self.k, device=self.device)
-        self.coef.data = torch.cat([curve2coef(x_pos[i].permute(1,0), y_eval[i], self.grid[i], self.k, device=self.device).unsqueeze(0) for i in range(batch)],dim=0)
+        self.coef.data = curve2coef(x_pos.permute(0,2,1), y_eval, self.grid, self.k, device=self.device)
+        # self.coef.data = torch.cat([curve2coef(x_pos[i].permute(1,0), y_eval[i], self.grid[i], self.k, device=self.device).unsqueeze(0) for i in range(batch)],dim=0)
         
         
 
@@ -851,7 +854,8 @@ class HybridModel(nn.Module):
             return out1_list, out2_list
 
     def multi_scale_process_inputs(self, x_enc):
-        x_enc_list = [x_enc]
+        x_enc_list = []
+        x_enc_list.append(x_enc)
         
         if self.configs.down_sampling_method == 'max':
             down_pool = self.down_pool_max
@@ -877,8 +881,8 @@ class HybridModel(nn.Module):
         return dec_out_list
 
     def forecast(self, x_enc):
-        x_enc_list = self.multi_scale_process_inputs(x_enc)
         
+        x_enc_list = self.multi_scale_process_inputs(x_enc)
         x_list = []
         for i, x in zip(range(len(x_enc_list)), x_enc_list):
             x = self.normalize_layers[i](x, 'norm')
@@ -894,7 +898,6 @@ class HybridModel(nn.Module):
             # B, N, T  eg. 1, N, 1 
             enc_out_list.append(x)
             # downsample, B, N, T
-        
         total_entropy = 0
         # Past Decomposable Mixing with MoE
         for i in range(self.layer):
@@ -903,11 +906,9 @@ class HybridModel(nn.Module):
             '''for gating_weights in gating_weights_list:
                 entropy = -torch.sum(gating_weights*torch.log(gating_weights + 1e-8), dim = 1).mean()
                 total_entropy += entropy'''
-        
         B = x_enc.size(0)
         # Future Multi Mixing
         dec_out_list = self.future_multi_mixing(B, enc_out_list=enc_out_list)
-        
         
         dec_out = torch.stack(dec_out_list, dim=-1).sum(-1)
         dec_out = self.normalize_layers[0](dec_out, 'denorm')
